@@ -360,6 +360,7 @@ func TestReflectInvalidStargateQuery(t *testing.T) {
 
 	funds := sdk.NewCoins(sdk.NewInt64Coin("denom", 320000))
 	contractStart := sdk.NewCoins(sdk.NewInt64Coin("denom", 40000))
+	expectedBalance := funds.Sub(contractStart)
 	creator := keepers.Faucet.NewFundedAccount(ctx, funds...)
 
 	// upload code
@@ -379,6 +380,7 @@ func TestReflectInvalidStargateQuery(t *testing.T) {
 		Address: creator.String(),
 	}
 	protoQueryBin, err := proto.Marshal(&protoQuery)
+	require.NoError(t, err)
 	protoRequest := wasmvmtypes.QueryRequest{
 		Stargate: &wasmvmtypes.StargateQuery{
 			Path: "/cosmos.bank.v1beta1.Query/AllBalances",
@@ -390,44 +392,17 @@ func TestReflectInvalidStargateQuery(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// make a query on the chain, should be blacklisted
-	_, err = keeper.QuerySmart(ctx, contractAddr, protoQueryBz)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "Stargate queries are disabled")
-
-	// now, try to build a protobuf query
-	protoRequest = wasmvmtypes.QueryRequest{
-		Stargate: &wasmvmtypes.StargateQuery{
-			Path: "/cosmos.tx.v1beta1.Service/GetTx",
-			Data: []byte{},
-		},
-	}
-	protoQueryBz, err = json.Marshal(ReflectQueryMsg{
-		Chain: &ChainQuery{Request: &protoRequest},
-	})
+	// make a query on the chain
+	protoRes, err := keeper.QuerySmart(ctx, contractAddr, protoQueryBz)
 	require.NoError(t, err)
+	var protoChain ChainResponse
+	mustParse(t, protoRes, &protoChain)
 
-	// make a query on the chain, should be blacklisted
-	_, err = keeper.QuerySmart(ctx, contractAddr, protoQueryBz)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "Stargate queries are disabled")
-
-	// and another one
-	protoRequest = wasmvmtypes.QueryRequest{
-		Stargate: &wasmvmtypes.StargateQuery{
-			Path: "/cosmos.base.tendermint.v1beta1.Service/GetNodeInfo",
-			Data: []byte{},
-		},
-	}
-	protoQueryBz, err = json.Marshal(ReflectQueryMsg{
-		Chain: &ChainQuery{Request: &protoRequest},
-	})
+	// unmarshal raw protobuf response
+	var protoResult banktypes.QueryAllBalancesResponse
+	err = proto.Unmarshal(protoChain.Data, &protoResult)
 	require.NoError(t, err)
-
-	// make a query on the chain, should be blacklisted
-	_, err = keeper.QuerySmart(ctx, contractAddr, protoQueryBz)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "Stargate queries are disabled")
+	assert.Equal(t, expectedBalance, protoResult.Balances)
 }
 
 type reflectState struct {

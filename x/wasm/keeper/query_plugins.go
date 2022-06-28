@@ -3,8 +3,11 @@ package keeper
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
+	abci "github.com/tendermint/tendermint/abci/types"
 
 	channeltypes "github.com/cosmos/ibc-go/v3/modules/core/04-channel/types"
 
@@ -268,9 +271,32 @@ func IBCQuerier(wasm contractMetaDataSource, channelKeeper types.ChannelKeeper) 
 	}
 }
 
+var queryDenyList = []string{
+	"/cosmos.tx.",
+	"/cosmos.base.tendermint.",
+}
+
 func StargateQuerier(queryRouter GRPCQueryRouter) func(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error) {
 	return func(ctx sdk.Context, msg *wasmvmtypes.StargateQuery) ([]byte, error) {
-		return nil, wasmvmtypes.UnsupportedRequest{Kind: "Stargate queries are disabled."}
+		for _, b := range queryDenyList {
+			if strings.HasPrefix(msg.Path, b) {
+				return nil, wasmvmtypes.UnsupportedRequest{Kind: "path is not allowed from the contract"}
+			}
+		}
+
+		route := queryRouter.Route(msg.Path)
+		if route == nil {
+			return nil, wasmvmtypes.UnsupportedRequest{Kind: fmt.Sprintf("No route to query '%s'", msg.Path)}
+		}
+		req := abci.RequestQuery{
+			Data: msg.Data,
+			Path: msg.Path,
+		}
+		res, err := route(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return res.Value, nil
 	}
 }
 
