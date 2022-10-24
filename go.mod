@@ -8,8 +8,8 @@ require (
 	github.com/cosmos/cosmos-sdk v0.45.8
 	github.com/cosmos/gogoproto v1.4.2
 	github.com/cosmos/iavl v0.19.1
-	github.com/cosmos/ibc-go/v3 v3.3.0
-	github.com/cosmos/interchain-accounts v0.1.0
+	github.com/cosmos/ibc-go/v4 v4.1.0
+	github.com/cosmos/interchain-accounts v0.2.0
 	github.com/dvsekhvalnov/jose2go v1.5.0
 	github.com/gogo/protobuf v1.3.3
 	github.com/golang/protobuf v1.5.2
@@ -62,6 +62,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/felixge/httpsnoop v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
+	github.com/gin-gonic/gin v1.7.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
