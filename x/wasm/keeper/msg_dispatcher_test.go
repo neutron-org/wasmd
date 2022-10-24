@@ -312,10 +312,10 @@ func TestDispatchSubmessages(t *testing.T) {
 						return nil, fmt.Errorf("event count: %#v", res.Events)
 					}
 					if res.Events[0].Type != "execute" {
-						return nil, fmt.Errorf("event0: %#v", res.Events[0])
+						return nil, fmt.Errorf("event1: %#v", res.Events[1])
 					}
 					if res.Events[1].Type != "wasm" {
-						return nil, fmt.Errorf("event1: %#v", res.Events[1])
+						return nil, fmt.Errorf("event2: %#v", res.Events[2])
 					}
 
 					// let's add a custom event here and see if it makes it out
@@ -374,6 +374,7 @@ func TestDispatchSubmessages(t *testing.T) {
 						sdk.NewEvent("message", sdk.NewAttribute("stargate", "something-something")),
 						// we still emit this to the client, but not the contract
 						sdk.NewEvent("non-determinstic"),
+						sdk.NewEvent("message", sdk.NewAttribute("module", "ibc_channel")),
 					}
 					return events, [][]byte{[]byte("subData")}, nil
 				},
@@ -382,6 +383,7 @@ func TestDispatchSubmessages(t *testing.T) {
 			expCommits: []bool{true},
 			expEvents: []sdk.Event{
 				sdk.NewEvent("non-determinstic"),
+				sdk.NewEvent("message", sdk.NewAttribute("module", "ibc_channel")),
 				// the event from reply is also exposed
 				sdk.NewEvent("stargate-reply"),
 			},
