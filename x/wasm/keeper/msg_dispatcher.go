@@ -199,12 +199,24 @@ func isIBCEvent(event sdk.Event) bool {
 	return false
 }
 
+func isFeerefunderEvent(event sdk.Event) bool {
+	for _, attr := range event.Attributes {
+		// During contracts execution there are fee being locked and feerefunder module emits lock_fees event
+		if bytes.Equal(attr.Key, []byte("module")) && bytes.Equal(attr.Value, []byte("feerefunder")) {
+			return true
+		}
+	}
+	return false
+}
+
 func filterEvents(events []sdk.Event) []sdk.Event {
 	// pre-allocate space for efficiency
 	res := make([]sdk.Event, 0, len(events))
 	for _, ev := range events {
-		// we filter out all 'message' type events but if they are ibc events we must keep them for the IBC relayer (hermes particularly)
-		if ev.Type != "message" || isIBCEvent(ev) {
+		// we filter out all 'message' type events but
+		// 1. ibc events (we must keep them for the IBC relayer (hermes particularly))
+		// 2. feerefunder events
+		if ev.Type != "message" || isIBCEvent(ev) || isFeerefunderEvent(ev) {
 			res = append(res, ev)
 		}
 	}
