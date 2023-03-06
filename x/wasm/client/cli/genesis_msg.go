@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
@@ -53,7 +54,11 @@ func GenesisStoreCodeCmd(defaultNodeHome string, genesisMutator GenesisMutator) 
 				return err
 			}
 
-			msg, err := parseStoreCodeArgs(args[0], senderAddr, cmd.Flags())
+			wasmFile, err := os.ReadFile(args[0])
+			if err != nil {
+				return err
+			}
+			msg, err := parseStoreCodeArgs(wasmFile, senderAddr, cmd.Flags())
 			if err != nil {
 				return err
 			}

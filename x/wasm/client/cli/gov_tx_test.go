@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/CosmWasm/wasmd/x/wasm/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 func TestParseAccessConfigUpdates(t *testing.T) {
@@ -155,4 +156,25 @@ func TestParseCodeInfoFlags(t *testing.T) {
 			require.NoError(t, gotErr)
 		})
 	}
+}
+
+func TestChecksumGzipInteraction(t *testing.T) {
+	correctSource := "https://github.com/CosmWasm/wasmd/blob/main/x/wasm/keeper/testdata/hackatom.wasm"
+	correctBuilderRef := "cosmwasm/workspace-optimizer:0.12.9"
+
+	fileName := "../../keeper/testdata/hackatom.wasm"
+	wasmFile, err := os.ReadFile(fileName)
+	require.NoError(t, err)
+
+	checksumStr := "13a1fc994cc6d1c81b746ee0c0ff6f90043875e0bf1d9be6b7d779fc978dc2a5"
+	args := []string{"--code-source-url=" + correctSource, "--builder=" + correctBuilderRef, "--code-hash=" + checksumStr}
+
+	flags := ProposalStoreCodeCmd().Flags()
+	require.NoError(t, flags.Parse(args))
+	_, _, _, err = parseVerificationFlags(wasmFile, flags)
+	require.NoError(t, err)
+	msg, err := parseStoreCodeArgs(wasmFile, sdk.AccAddress{}, flags)
+	require.NoError(t, err)
+	_, _, _, err = parseVerificationFlags(msg.WASMByteCode, flags)
+	require.Error(t, err)
 }

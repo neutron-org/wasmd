@@ -81,7 +81,11 @@ func StoreCodeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			msg, err := parseStoreCodeArgs(args[0], clientCtx.GetFromAddress(), cmd.Flags())
+			wasmFile, err := os.ReadFile(args[0])
+			if err != nil {
+				return err
+			}
+			msg, err := parseStoreCodeArgs(wasmFile, clientCtx.GetFromAddress(), cmd.Flags())
 			if err != nil {
 				return err
 			}
@@ -101,13 +105,9 @@ func StoreCodeCmd() *cobra.Command {
 	return cmd
 }
 
-func parseStoreCodeArgs(file string, sender sdk.AccAddress, flags *flag.FlagSet) (types.MsgStoreCode, error) {
-	wasm, err := os.ReadFile(file)
-	if err != nil {
-		return types.MsgStoreCode{}, err
-	}
-
+func parseStoreCodeArgs(wasm []byte, sender sdk.AccAddress, flags *flag.FlagSet) (types.MsgStoreCode, error) {
 	// gzip the wasm file
+	var err error
 	if ioutils.IsWasm(wasm) {
 		wasm, err = ioutils.GzipIt(wasm)
 

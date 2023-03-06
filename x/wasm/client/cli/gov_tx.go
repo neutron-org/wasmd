@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 
@@ -34,7 +35,15 @@ func ProposalStoreCodeCmd() *cobra.Command {
 				return err
 			}
 
-			src, err := parseStoreCodeArgs(args[0], clientCtx.FromAddress, cmd.Flags())
+			wasmFile, err := os.ReadFile(args[0])
+			if err != nil {
+				return err
+			}
+			source, builder, codeHash, err := parseVerificationFlags(wasmFile, cmd.Flags())
+			if err != nil {
+				return err
+			}
+			src, err := parseStoreCodeArgs(wasmFile, clientCtx.FromAddress, cmd.Flags())
 			if err != nil {
 				return err
 			}
@@ -51,10 +60,6 @@ func ProposalStoreCodeCmd() *cobra.Command {
 				return err
 			}
 
-			source, builder, codeHash, err := parseVerificationFlags(src.WASMByteCode, cmd.Flags())
-			if err != nil {
-				return err
-			}
 			content := types.StoreCodeProposal{
 				Title:                 proposalTitle,
 				Description:           proposalDescr,
@@ -211,7 +216,15 @@ func ProposalStoreAndInstantiateContractCmd() *cobra.Command {
 				return err
 			}
 
-			src, err := parseStoreCodeArgs(args[0], clientCtx.FromAddress, cmd.Flags())
+			wasmFile, err := os.ReadFile(args[0])
+			if err != nil {
+				return err
+			}
+			source, builder, codeHash, err := parseVerificationFlags(wasmFile, cmd.Flags())
+			if err != nil {
+				return err
+			}
+			src, err := parseStoreCodeArgs(wasmFile, clientCtx.FromAddress, cmd.Flags())
 			if err != nil {
 				return err
 			}
@@ -224,11 +237,6 @@ func ProposalStoreAndInstantiateContractCmd() *cobra.Command {
 			}
 
 			unpinCode, err := cmd.Flags().GetBool(flagUnpinCode)
-			if err != nil {
-				return err
-			}
-
-			source, builder, codeHash, err := parseVerificationFlags(src.WASMByteCode, cmd.Flags())
 			if err != nil {
 				return err
 			}
