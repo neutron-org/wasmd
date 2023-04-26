@@ -4,14 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
+	"github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
-	abci "github.com/tendermint/tendermint/abci/types"
-
 	channeltypes "github.com/cosmos/ibc-go/v4/modules/core/04-channel/types"
-
-	"github.com/CosmWasm/wasmd/x/wasm/types"
+	abci "github.com/tendermint/tendermint/abci/types"
 
 	wasmvmtypes "github.com/CosmWasm/wasmvm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -327,6 +324,9 @@ func AcceptListStargateQuerier(acceptList AcceptedStargateQueries, queryRouter G
 
 func StakingQuerier(keeper types.StakingKeeper, distKeeper types.DistributionKeeper) func(ctx sdk.Context, request *wasmvmtypes.StakingQuery) ([]byte, error) {
 	return func(ctx sdk.Context, request *wasmvmtypes.StakingQuery) ([]byte, error) {
+		if keeper == nil {
+			return nil, wasmvmtypes.UnsupportedRequest{Kind: "Staking is not supported"}
+		}
 		if request.BondedDenom != nil {
 			denom := keeper.BondDenom(ctx)
 			res := wasmvmtypes.BondedDenomResponse{
