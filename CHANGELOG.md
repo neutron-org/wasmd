@@ -3,6 +3,7 @@
 ## [Unreleased](https://github.com/CosmWasm/wasmd/tree/HEAD)
 
 [Full Changelog](https://github.com/CosmWasm/wasmd/compare/v0.31.0...HEAD)
+- Upgrade to Go v1.20
 
 ## [v0.31.0](https://github.com/CosmWasm/wasmd/tree/v0.31.0) (2023-03-13)
 
