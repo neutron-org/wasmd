@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -212,6 +213,7 @@ func EncodeAnyMsg(unpacker codectypes.AnyUnpacker) AnyEncoder {
 		}
 		var sdkMsg sdk.Msg
 		if err := unpacker.UnpackAny(&codecAny, &sdkMsg); err != nil {
+			fmt.Printf("UnpackAny Error: %+v\nMessage:\n%+v", err, base64.StdEncoding.EncodeToString(msg.Value))
 			return nil, errorsmod.Wrap(types.ErrInvalidMsg, fmt.Sprintf("Cannot unpack proto message with type URL: %s", msg.TypeURL))
 		}
 		if err := codectypes.UnpackInterfaces(sdkMsg, unpacker); err != nil {
