@@ -3,6 +3,7 @@ package ioutils
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"io"
 
@@ -45,4 +46,18 @@ func (l *LimitedReader) Read(p []byte) (n int, err error) {
 		return 0, errLimit
 	}
 	return l.r.Read(p)
+}
+
+// CompactMsg removes insignificant space characters from a valid JSON msg
+func CompactMsg(msg []byte) ([]byte, error) {
+	if msg == nil {
+		return msg, nil
+	}
+
+	var compactMsgBuffer bytes.Buffer
+	if err := json.Compact(&compactMsgBuffer, msg); err != nil {
+		return nil, err
+	}
+
+	return compactMsgBuffer.Bytes(), nil
 }

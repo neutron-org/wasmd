@@ -73,7 +73,7 @@ func setupTest(t *testing.T) testData {
 	queryRouter.SetInterfaceRegistry(encConf.InterfaceRegistry)
 	serviceRouter.SetInterfaceRegistry(encConf.InterfaceRegistry)
 	data := testData{
-		module:           NewAppModule(encConf.Codec, keepers.WasmKeeper, keepers.StakingKeeper, keepers.AccountKeeper, keepers.BankKeeper, nil, newMockSubspace(DefaultParams)),
+		module:           NewAppModule(encConf.Codec, keepers.WasmKeeper, keepers.AccountKeeper, keepers.BankKeeper, nil, newMockSubspace(DefaultParams)),
 		ctx:              ctx,
 		acctKeeper:       keepers.AccountKeeper,
 		keeper:           *keepers.WasmKeeper,

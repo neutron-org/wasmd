@@ -5,6 +5,7 @@ import (
 
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
 func (s Sequence) ValidateBasic() error {
@@ -33,7 +34,11 @@ func (s GenesisState) ValidateBasic() error {
 			return errorsmod.Wrapf(err, "sequence: %d", i)
 		}
 	}
-
+	for i := range s.GenMsgs {
+		if err := s.GenMsgs[i].ValidateBasic(); err != nil {
+			return errorsmod.Wrapf(err, "gen message: %d", i)
+		}
+	}
 	return nil
 }
 
@@ -75,6 +80,33 @@ func (c Contract) ValidateBasic() error {
 		}
 	}
 	return nil
+}
+
+// AsMsg returns the underlying cosmos-sdk message instance. Null when can not be mapped to a known type.
+func (m GenesisState_GenMsgs) AsMsg() sdk.Msg {
+	if msg := m.GetStoreCode(); msg != nil {
+		return msg
+	}
+	if msg := m.GetInstantiateContract(); msg != nil {
+		return msg
+	}
+	if msg := m.GetExecuteContract(); msg != nil {
+		return msg
+	}
+	return nil
+}
+
+func (m GenesisState_GenMsgs) ValidateBasic() error {
+	if msg := m.GetStoreCode(); msg != nil {
+		return msg.ValidateBasic()
+	}
+	if msg := m.GetInstantiateContract(); msg != nil {
+		return msg.ValidateBasic()
+	}
+	if msg := m.GetExecuteContract(); msg != nil {
+		return msg.ValidateBasic()
+	}
+	return errorsmod.Wrapf(sdkerrors.ErrInvalidType, "unknown message")
 }
 
 // ValidateGenesis performs basic validation of supply genesis data returning an

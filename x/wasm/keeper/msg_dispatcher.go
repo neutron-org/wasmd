@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -225,11 +226,34 @@ func redactError(err error) error {
 	return fmt.Errorf("codespace: %s, code: %d", codespace, code)
 }
 
+func isIBCEvent(event sdk.Event) bool {
+	for _, attr := range event.Attributes {
+		// Hermes ibc-rs subscribes on such events, so we need to keep them to have the ibc-rs working properly
+		// https://github.com/informalsystems/ibc-rs/blob/ed4dd8c8b4ebd695730de2a1c69f3011cb179352/relayer/src/event/monitor.rs#L134
+		if bytes.HasPrefix([]byte(attr.Value), []byte("ibc_")) {
+			return true
+		}
+	}
+	return false
+}
+
+func isDexEvent(event sdk.Event) bool {
+	for _, attr := range event.Attributes {
+		// Indexing of dex events requires that all dev events are emitted
+		if attr.Key == sdk.AttributeKeyModule && attr.Value == "dex" {
+			return true
+		}
+	}
+	return false
+}
+
 func filterEvents(events []sdk.Event) []sdk.Event {
 	// pre-allocate space for efficiency
 	res := make([]sdk.Event, 0, len(events))
 	for _, ev := range events {
-		if ev.Type != "message" {
+		// we filter out all 'message' type events but if they are ibc events we must keep them for the IBC relayer (hermes particularly)
+		// we also keep dex events, this is required for proper indexing of dex messages
+		if ev.Type != "message" || isIBCEvent(ev) || isDexEvent(ev) {
 			res = append(res, ev)
 		}
 	}

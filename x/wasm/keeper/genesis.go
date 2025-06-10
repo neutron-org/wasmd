@@ -8,6 +8,7 @@ import (
 	errorsmod "cosmossdk.io/errors"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
@@ -20,7 +21,7 @@ type ValidatorSetSource interface {
 // InitGenesis sets supply information for genesis.
 //
 // CONTRACT: all types of accounts must have been already initialized/created
-func InitGenesis(ctx sdk.Context, keeper *Keeper, data types.GenesisState) ([]abci.ValidatorUpdate, error) {
+func InitGenesis(ctx sdk.Context, keeper *Keeper, data types.GenesisState, msgRouter MessageRouter) ([]abci.ValidatorUpdate, error) {
 	contractKeeper := NewGovPermissionKeeper(keeper)
 	err := keeper.SetParams(ctx, data.Params)
 	if err != nil {
@@ -78,6 +79,21 @@ func InitGenesis(ctx sdk.Context, keeper *Keeper, data types.GenesisState) ([]ab
 	addr := keeper.ClassicAddressGenerator()(rCtx, seqVal, nil)
 	if keeper.HasContractInfo(ctx, addr) {
 		return nil, errorsmod.Wrapf(types.ErrInvalid, "value: %d for seq %s was used already", seqVal, string(types.KeySequenceInstanceID))
+	}
+
+	if len(data.GenMsgs) == 0 {
+		return nil, nil
+	}
+	for _, genTx := range data.GenMsgs {
+		msg := genTx.AsMsg()
+		if msg == nil {
+			return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "unknown message")
+		}
+		handler := msgRouter.Handler(msg)
+		_, err := handler(ctx, msg)
+		if err != nil {
+			return nil, errorsmod.Wrap(err, "genesis")
+		}
 	}
 	return nil, nil
 }

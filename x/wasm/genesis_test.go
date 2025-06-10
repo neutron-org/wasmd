@@ -86,7 +86,7 @@ func TestInitGenesis(t *testing.T) {
 	q2 := newData.grpcQueryRouter
 
 	// initialize new app with genstate
-	_, err = keeper.InitGenesis(newData.ctx, &newData.keeper, *genState)
+	_, err = keeper.InitGenesis(newData.ctx, &newData.keeper, *genState, newData.module.router)
 	require.NoError(t, err)
 
 	// run same checks again on newdata, to make sure it was reinitialized correctly

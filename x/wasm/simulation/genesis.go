@@ -17,6 +17,7 @@ func RandomizedGenState(simstate *module.SimulationState) {
 			{IDKey: types.KeySequenceCodeID, Value: simstate.Rand.Uint64() % 1_000_000_000},
 			{IDKey: types.KeySequenceInstanceID, Value: simstate.Rand.Uint64() % 1_000_000_000},
 		},
+		GenMsgs: nil,
 	}
 
 	_, err := simstate.Cdc.MarshalJSON(&wasmGenesis)

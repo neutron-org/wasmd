@@ -46,11 +46,17 @@ func TestEncoding(t *testing.T) {
 			sdk.NewInt64Coin("utgd", 54321),
 		},
 	}
-	bankMsgBin := must(proto.Marshal(bankMsg))
+	bankMsgBin, err := proto.Marshal(bankMsg)
+	require.NoError(t, err)
+
+	msg, err := codectypes.NewAnyWithValue(types.MsgStoreCodeFixture())
+	require.NoError(t, err)
 	proposalMsg := &govv1.MsgSubmitProposal{
 		Proposer:       addr1.String(),
-		Messages:       []*codectypes.Any{must(codectypes.NewAnyWithValue(types.MsgStoreCodeFixture()))},
+		Messages:       []*codectypes.Any{msg},
 		InitialDeposit: sdk.NewCoins(sdk.NewInt64Coin("uatom", 12345)),
+		Title:          "proposal",
+		Summary:        "proposal summary",
 	}
 	proposalMsgBin, err := proto.Marshal(proposalMsg)
 	require.NoError(t, err)

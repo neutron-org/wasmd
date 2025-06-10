@@ -103,12 +103,11 @@ var _ appmodule.AppModule = AppModule{}
 // AppModule implements an application module for the wasm module.
 type AppModule struct {
 	AppModuleBasic
-	cdc                codec.Codec
-	keeper             *keeper.Keeper
-	validatorSetSource keeper.ValidatorSetSource
-	accountKeeper      types.AccountKeeper // for simulation
-	bankKeeper         simulation.BankKeeper
-	router             keeper.MessageRouter
+	cdc           codec.Codec
+	keeper        *keeper.Keeper
+	accountKeeper types.AccountKeeper // for simulation
+	bankKeeper    simulation.BankKeeper
+	router        keeper.MessageRouter
 	// legacySubspace is used solely for migration of x/params managed parameters
 	legacySubspace exported.Subspace
 }
@@ -117,21 +116,19 @@ type AppModule struct {
 func NewAppModule(
 	cdc codec.Codec,
 	keeper *keeper.Keeper,
-	validatorSetSource keeper.ValidatorSetSource,
 	ak types.AccountKeeper,
 	bk simulation.BankKeeper,
 	router *baseapp.MsgServiceRouter,
 	ss exported.Subspace,
 ) AppModule {
 	return AppModule{
-		AppModuleBasic:     AppModuleBasic{},
-		cdc:                cdc,
-		keeper:             keeper,
-		validatorSetSource: validatorSetSource,
-		accountKeeper:      ak,
-		bankKeeper:         bk,
-		router:             router,
-		legacySubspace:     ss,
+		AppModuleBasic: AppModuleBasic{},
+		cdc:            cdc,
+		keeper:         keeper,
+		accountKeeper:  ak,
+		bankKeeper:     bk,
+		router:         router,
+		legacySubspace: ss,
 	}
 }
 
@@ -181,7 +178,7 @@ func (AppModule) QuerierRoute() string {
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.RawMessage) []abci.ValidatorUpdate {
 	var genesisState types.GenesisState
 	cdc.MustUnmarshalJSON(data, &genesisState)
-	validators, err := keeper.InitGenesis(ctx, am.keeper, genesisState)
+	validators, err := keeper.InitGenesis(ctx, am.keeper, genesisState, am.router)
 	if err != nil {
 		panic(err)
 	}

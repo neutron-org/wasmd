@@ -183,17 +183,16 @@ func (k Keeper) create(ctx context.Context, creator sdk.AccAddress, wasmCode []b
 	if err != nil {
 		return 0, checksum, errorsmod.Wrap(types.ErrCreateFailed, err.Error())
 	}
-	// simulation gets default value for capabilities
-	var requiredCapabilities string
+	// simulation gets default value for report
+	var report *wasmvmtypes.AnalysisReport = &wasmvmtypes.AnalysisReport{}
 	if !isSimulation {
-		report, err := k.wasmVM.AnalyzeCode(checksum)
-		if err != nil {
-			return 0, checksum, errorsmod.Wrap(types.ErrCreateFailed, err.Error())
-		}
-		requiredCapabilities = report.RequiredCapabilities
+		report, err = k.wasmVM.AnalyzeCode(checksum)
+	}
+	if err != nil {
+		return 0, checksum, errorsmod.Wrap(types.ErrCreateFailed, err.Error())
 	}
 	codeID = k.mustAutoIncrementID(sdkCtx, types.KeySequenceCodeID)
-	k.Logger(sdkCtx).Debug("storing new contract", "capabilities", requiredCapabilities, "code_id", codeID)
+	k.Logger(sdkCtx).Debug("storing new contract", "capabilities", report.RequiredCapabilities, "code_id", codeID)
 	codeInfo := types.NewCodeInfo(checksum, creator, *instantiateAccess)
 	k.mustStoreCodeInfo(sdkCtx, codeID, codeInfo)
 
@@ -202,14 +201,13 @@ func (k Keeper) create(ctx context.Context, creator sdk.AccAddress, wasmCode []b
 		sdk.NewAttribute(types.AttributeKeyChecksum, hex.EncodeToString(checksum)),
 		sdk.NewAttribute(types.AttributeKeyCodeID, strconv.FormatUint(codeID, 10)), // last element to be compatible with scripts
 	)
-	for _, f := range strings.Split(requiredCapabilities, ",") {
+	for _, f := range strings.Split(report.RequiredCapabilities, ",") {
 		evt.AppendAttributes(sdk.NewAttribute(types.AttributeKeyRequiredCapability, strings.TrimSpace(f)))
 	}
 	sdkCtx.EventManager().EmitEvent(evt)
 
 	return codeID, checksum, nil
 }
-
 func (k Keeper) mustStoreCodeInfo(ctx context.Context, codeID uint64, codeInfo types.CodeInfo) {
 	store := k.storeService.OpenKVStore(ctx)
 	// 0x01 | codeID (uint64) -> ContractInfo
@@ -252,13 +250,18 @@ func (k Keeper) instantiate(
 	ctx context.Context,
 	codeID uint64,
 	creator, admin sdk.AccAddress,
-	initMsg []byte,
+	rawInitMsg []byte,
 	label string,
 	deposit sdk.Coins,
 	addressGenerator AddressGenerator,
 	authPolicy types.AuthorizationPolicy,
 ) (sdk.AccAddress, []byte, error) {
 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "instantiate")
+
+	initMsg, err := ioutils.CompactMsg(rawInitMsg)
+	if err != nil {
+		return nil, nil, errorsmod.Wrapf(types.ErrInvalidMsg, "failed to compact init msg: %s", err.Error())
+	}
 
 	if creator == nil {
 		return nil, nil, types.ErrEmpty.Wrap("creator")
@@ -454,10 +457,15 @@ func (k Keeper) migrate(
 	contractAddress sdk.AccAddress,
 	caller sdk.AccAddress,
 	newCodeID uint64,
-	msg []byte,
+	rawMsg []byte,
 	authZ types.AuthorizationPolicy,
 ) ([]byte, error) {
 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "migrate")
+
+	msg, err := ioutils.CompactMsg(rawMsg)
+	if err != nil {
+		return nil, errorsmod.Wrapf(types.ErrInvalidMsg, "failed to compact migrate msg: %s", err.Error())
+	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
