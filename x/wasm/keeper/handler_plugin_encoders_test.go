@@ -5,14 +5,14 @@ import (
 
 	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
 	"github.com/cosmos/gogoproto/proto"
-	ibcfee "github.com/cosmos/ibc-go/v8/modules/apps/29-fee/types"
-	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
-	clienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types" //nolint:staticcheck
-	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	ibctransfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
+	clienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types" //nolint:staticcheck
+	channeltypes "github.com/cosmos/ibc-go/v10/modules/core/04-channel/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	sdkmath "cosmossdk.io/math"
+	storetypes "cosmossdk.io/store/types"
 
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -438,7 +438,8 @@ func TestEncoding(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			encoder := DefaultEncoders(encodingConfig.Codec, wasmtesting.MockIBCTransferKeeper{})
-			res, err := encoder.Encode(sdk.Context{}, tc.sender, "", tc.srcMsg)
+			gm := storetypes.NewInfiniteGasMeter()
+			res, err := encoder.Encode(sdk.Context{}.WithGasMeter(gm), tc.sender, "", tc.srcMsg)
 			if tc.expError {
 				assert.Error(t, err)
 				return
@@ -640,22 +641,7 @@ func TestEncodeIbcMsg(t *testing.T) {
 					},
 				},
 			},
-			output: []sdk.Msg{
-				&ibcfee.MsgPayPacketFee{
-					Fee: ibcfee.Fee{
-						TimeoutFee: []sdk.Coin{
-							{
-								Denom:  "ALX",
-								Amount: sdkmath.NewInt(1),
-							},
-						},
-					},
-					SourcePortId:    "myIBCPort",
-					SourceChannelId: "myChannelID",
-					Signer:          addr1.String(),
-					Relayers:        []string{},
-				},
-			},
+			expError: true,
 		},
 		"IBC PayPacketFeeAsync": {
 			sender:             addr1,
@@ -678,27 +664,7 @@ func TestEncodeIbcMsg(t *testing.T) {
 					},
 				},
 			},
-			output: []sdk.Msg{
-				&ibcfee.MsgPayPacketFeeAsync{
-					PacketId: channeltypes.PacketId{
-						PortId:    "myIBCPort",
-						ChannelId: "myChannelID",
-						Sequence:  42,
-					},
-					PacketFee: ibcfee.PacketFee{
-						Fee: ibcfee.Fee{
-							TimeoutFee: []sdk.Coin{
-								{
-									Denom:  "ALX",
-									Amount: sdkmath.NewInt(1),
-								},
-							},
-						},
-						RefundAddress: addr1.String(),
-						Relayers:      []string{},
-					},
-				},
-			},
+			expError: true,
 		},
 	}
 	encodingConfig := MakeEncodingConfig(t)
