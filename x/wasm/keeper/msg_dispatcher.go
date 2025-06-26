@@ -243,7 +243,7 @@ func isIBCEvent(event sdk.Event) bool {
 
 func isDexEvent(event sdk.Event) bool {
 	for _, attr := range event.Attributes {
-		// Indexing of dex events requires that all dev events are emitted
+		// Indexing of dex events requires that all dex events are emitted
 		if attr.Key == sdk.AttributeKeyModule && attr.Value == "dex" {
 			return true
 		}
