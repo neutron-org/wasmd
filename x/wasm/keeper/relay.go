@@ -3,10 +3,10 @@ package keeper
 import (
 	"time"
 
-	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
-	clienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types"
-	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
-	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/v3/types"
+	clienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types"
+	channeltypes "github.com/cosmos/ibc-go/v10/modules/core/04-channel/types"
+	ibcexported "github.com/cosmos/ibc-go/v10/modules/core/exported"
 
 	errorsmod "cosmossdk.io/errors"
 
@@ -22,31 +22,47 @@ var _ types.IBCContractKeeper = (*Keeper)(nil)
 // In the IBC protocol this is either the `Channel Open Init` event on the initiating chain or
 // `Channel Open Try` on the counterparty chain.
 // Protocol version and channel ordering should be verified for example.
-// See https://github.com/cosmos/ics/tree/master/spec/ics-004-channel-and-packet-semantics#channel-lifecycle-management
+// See https://github.com/cosmos/ibc/blob/main/spec/core/ics-004-channel-and-packet-semantics/README.md#channel-lifecycle-management
 func (k Keeper) OnOpenChannel(
 	ctx sdk.Context,
 	contractAddr sdk.AccAddress,
 	msg wasmvmtypes.IBCChannelOpenMsg,
 ) (string, error) {
 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "ibc-open-channel")
-	_, codeInfo, prefixStore, err := k.contractInstance(ctx, contractAddr)
+	contractInfo, codeInfo, prefixStore, err := k.contractInstance(ctx, contractAddr)
 	if err != nil {
 		return "", err
 	}
 
-	env := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-open-channel")
+
+	env := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)
 	res, gasUsed, execErr := k.wasmVM.IBCChannelOpen(codeInfo.CodeHash, env, msg, prefixStore, cosmwasmAPI, querier, ctx.GasMeter(), gasLeft, costJSONDeserialization)
 	k.consumeRuntimeGas(ctx, gasUsed)
+	// check if contract panicked / VM failed
 	if execErr != nil {
 		return "", errorsmod.Wrap(types.ErrExecuteFailed, execErr.Error())
 	}
-	if res != nil && res.Ok != nil {
-		return res.Ok.Version, nil
+	if res == nil {
+		// If this gets executed, that's a bug in wasmvm
+		return "", errorsmod.Wrap(types.ErrVMError, "internal wasmvm error")
 	}
-	return "", nil
+	// check contract result
+	if res.Err != "" {
+		return "", types.MarkErrorDeterministic(errorsmod.Wrap(types.ErrExecuteFailed, res.Err))
+	}
+	if res.Ok == nil {
+		// a nil "ok" value is a valid response and means the contract accepts the incoming channel version
+		// see https://docs.rs/cosmwasm-std/2.2.2/cosmwasm_std/type.IbcChannelOpenResponse.html
+		return "", nil
+	}
+	return res.Ok.Version, nil
 }
 
 // OnConnectChannel calls the contract to let it know the IBC channel was established.
@@ -55,7 +71,7 @@ func (k Keeper) OnOpenChannel(
 //
 // There is an open issue with the [cosmos-sdk](https://github.com/cosmos/cosmos-sdk/issues/8334)
 // that the counterparty channelID is empty on the initiating chain
-// See https://github.com/cosmos/ics/tree/master/spec/ics-004-channel-and-packet-semantics#channel-lifecycle-management
+// See https://github.com/cosmos/ibc/tree/main/spec/core/ics-004-channel-and-packet-semantics#channel-lifecycle-management
 func (k Keeper) OnConnectChannel(
 	ctx sdk.Context,
 	contractAddr sdk.AccAddress,
@@ -67,7 +83,12 @@ func (k Keeper) OnConnectChannel(
 		return err
 	}
 
-	env := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-connect-channel")
+
+	env := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)
@@ -92,7 +113,7 @@ func (k Keeper) OnConnectChannel(
 //
 // Once closed, channels cannot be reopened and identifiers cannot be reused. Identifier reuse is prevented because
 // we want to prevent potential replay of previously sent packets
-// See https://github.com/cosmos/ics/tree/master/spec/ics-004-channel-and-packet-semantics#channel-lifecycle-management
+// See https://github.com/cosmos/ibc/tree/main/spec/core/ics-004-channel-and-packet-semantics#channel-lifecycle-management
 func (k Keeper) OnCloseChannel(
 	ctx sdk.Context,
 	contractAddr sdk.AccAddress,
@@ -105,7 +126,12 @@ func (k Keeper) OnCloseChannel(
 		return err
 	}
 
-	params := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-close-channel")
+
+	params := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)
@@ -128,9 +154,9 @@ func (k Keeper) OnCloseChannel(
 // OnRecvPacket calls the contract to process the incoming IBC packet. The contract fully owns the data processing and
 // returns the acknowledgement data for the chain level. This allows custom applications and protocols on top
 // of IBC. Although it is recommended to use the standard acknowledgement envelope defined in
-// https://github.com/cosmos/ics/tree/master/spec/ics-004-channel-and-packet-semantics#acknowledgement-envelope
+// https://github.com/cosmos/ibc/blob/main/spec/core/ics-004-channel-and-packet-semantics/README.md#acknowledgement-envelope
 //
-// For more information see: https://github.com/cosmos/ics/tree/master/spec/ics-004-channel-and-packet-semantics#packet-flow--handling
+// For more information see: https://github.com/cosmos/ibc/blob/main/spec/core/ics-004-channel-and-packet-semantics/README.md#packet-flow--handling
 func (k Keeper) OnRecvPacket(
 	ctx sdk.Context,
 	contractAddr sdk.AccAddress,
@@ -142,7 +168,12 @@ func (k Keeper) OnRecvPacket(
 		return nil, err
 	}
 
-	env := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-recv-packet")
+
+	env := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)
@@ -199,11 +230,11 @@ func (w ContractConfirmStateAck) Acknowledgement() []byte {
 
 // OnAckPacket calls the contract to handle the "acknowledgement" data which can contain success or failure of a packet
 // acknowledgement written on the receiving chain for example. This is application level data and fully owned by the
-// contract. The use of the standard acknowledgement envelope is recommended: https://github.com/cosmos/ics/tree/master/spec/ics-004-channel-and-packet-semantics#acknowledgement-envelope
+// contract. The use of the standard acknowledgement envelope is recommended: https://github.com/cosmos/ibc/tree/main/spec/core/ics-004-channel-and-packet-semantics#acknowledgement-envelope
 //
 // On application errors the contract can revert an operation like returning tokens as in ibc-transfer.
 //
-// For more information see: https://github.com/cosmos/ics/tree/master/spec/ics-004-channel-and-packet-semantics#packet-flow--handling
+// For more information see: https://github.com/cosmos/ibc/tree/main/spec/core/ics-004-channel-and-packet-semantics#packet-flow--handling
 func (k Keeper) OnAckPacket(
 	ctx sdk.Context,
 	contractAddr sdk.AccAddress,
@@ -215,7 +246,12 @@ func (k Keeper) OnAckPacket(
 		return err
 	}
 
-	env := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-ack-packet")
+
+	env := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)
@@ -250,7 +286,12 @@ func (k Keeper) OnTimeoutPacket(
 		return err
 	}
 
-	env := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-timeout-packet")
+
+	env := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)
@@ -284,7 +325,12 @@ func (k Keeper) IBCSourceCallback(
 		return err
 	}
 
-	env := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-source-chain-callback")
+
+	env := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)
@@ -318,7 +364,12 @@ func (k Keeper) IBCDestinationCallback(
 		return err
 	}
 
-	env := types.NewEnv(ctx, contractAddr)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx, discount := k.checkDiscountEligibility(sdkCtx, codeInfo.CodeHash, k.IsPinnedCode(ctx, contractInfo.CodeID))
+	setupCost := k.gasRegister.SetupContractCost(discount, msg.ExpectedJSONSize())
+	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: ibc-destination-chain-callback")
+
+	env := types.NewEnv(ctx, k.txHash, contractAddr)
 	querier := k.newQueryHandler(ctx, contractAddr)
 
 	gasLeft := k.runtimeGasForContract(ctx)

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"testing"
 
-	wasmvm "github.com/CosmWasm/wasmvm/v2"
-	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
+	wasmvm "github.com/CosmWasm/wasmvm/v3"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/v3/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,7 +23,7 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
-// test handing of submessages, very closely related to the reflect_test
+// test handling of submessages, very closely related to the reflect_test
 
 // Try a simple send, no gas limit to for a sanity check before trying table tests
 func TestDispatchSubMsgSuccessCase(t *testing.T) {
@@ -250,7 +250,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			msg:         invalidBankSend,
 			subMsgError: true,
 			// uses less gas than the send tokens (cost of bank transfer)
-			resultAssertions: []assertion{assertGasUsed(78_000, 81_000), assertErrorString("codespace: sdk, code: 5")},
+			resultAssertions: []assertion{assertGasUsed(78_000, 81_100), assertErrorString("codespace: sdk, code: 5")},
 		},
 		"out of gas panic with no gas limit": {
 			submsgID:        7,
@@ -271,7 +271,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			subMsgError: true,
 			gasLimit:    &subGasLimit,
 			// uses same gas as call without limit (note we do not charge the 40k on reply)
-			resultAssertions: []assertion{assertGasUsed(78_000, 81_000), assertErrorString("codespace: sdk, code: 5")},
+			resultAssertions: []assertion{assertGasUsed(78_000, 81_100), assertErrorString("codespace: sdk, code: 5")},
 		},
 		"out of gas caught with gas limit": {
 			submsgID:    17,
@@ -562,7 +562,7 @@ func TestInstantiateGovSubMsgAuthzPropagated(t *testing.T) {
 	mockWasmVM := &wasmtesting.MockWasmEngine{}
 	wasmtesting.MakeInstantiable(mockWasmVM)
 	var instanceLevel int
-	// mock wasvm to return new instantiate msgs with the response
+	// mock wasmvm to return new instantiate msgs with the response
 	mockWasmVM.InstantiateFn = func(codeID wasmvm.Checksum, env wasmvmtypes.Env, info wasmvmtypes.MessageInfo, initMsg []byte, store wasmvm.KVStore, goapi wasmvm.GoAPI, querier wasmvm.Querier, gasMeter wasmvm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.ContractResult, uint64, error) {
 		if instanceLevel == 2 {
 			return &wasmvmtypes.ContractResult{Ok: &wasmvmtypes.Response{}}, 0, nil

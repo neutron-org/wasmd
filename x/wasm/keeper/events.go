@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/v3/types"
 
 	errorsmod "cosmossdk.io/errors"
 
@@ -13,7 +13,7 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
-// newWasmModuleEvent creates with wasm module event for interacting with the given contract. Adds custom attributes
+// newWasmModuleEvent creates a wasm module event for interacting with the given contract. Adds custom attributes
 // to this event.
 func newWasmModuleEvent(customAttributes []wasmvmtypes.EventAttribute, contractAddr sdk.AccAddress) (sdk.Events, error) {
 	attrs, err := contractSDKEventAttributes(customAttributes, contractAddr)
@@ -31,15 +31,15 @@ const eventTypeMinLength = 2
 func newCustomEvents(evts wasmvmtypes.Array[wasmvmtypes.Event], contractAddr sdk.AccAddress) (sdk.Events, error) {
 	events := make(sdk.Events, 0, len(evts))
 	for _, e := range evts {
-		typ := strings.TrimSpace(e.Type)
-		if len(typ) <= eventTypeMinLength {
-			return nil, errorsmod.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Event type too short: '%s'", typ))
+		errType := strings.TrimSpace(e.Type)
+		if len(errType) <= eventTypeMinLength {
+			return nil, errorsmod.Wrap(types.ErrInvalidEvent, fmt.Sprintf("Event type too short: '%s'", errType))
 		}
 		attributes, err := contractSDKEventAttributes(e.Attributes, contractAddr)
 		if err != nil {
 			return nil, err
 		}
-		events = append(events, sdk.NewEvent(fmt.Sprintf("%s%s", types.CustomContractEventPrefix, typ), attributes...))
+		events = append(events, sdk.NewEvent(fmt.Sprintf("%s%s", types.CustomContractEventPrefix, errType), attributes...))
 	}
 	return events, nil
 }

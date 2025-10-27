@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	wasmvm "github.com/CosmWasm/wasmvm/v2"
-	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
-	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	wasmvm "github.com/CosmWasm/wasmvm/v3"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/v3/types"
+	channeltypes "github.com/cosmos/ibc-go/v10/modules/core/04-channel/types"
 
 	"cosmossdk.io/collections"
 	corestoretypes "cosmossdk.io/core/store"
@@ -89,8 +89,6 @@ type Keeper struct {
 	cdc                   codec.Codec
 	accountKeeper         types.AccountKeeper
 	bank                  CoinTransferrer
-	portKeeper            types.PortKeeper
-	capabilityKeeper      types.CapabilityKeeper
 	wasmVM                types.WasmEngine
 	wasmVMQueryHandler    WasmVMQueryHandler
 	wasmVMResponseHandler WasmVMResponseHandler
@@ -109,6 +107,12 @@ type Keeper struct {
 	// the address capable of executing a MsgUpdateParams message. Typically, this
 	// should be the x/gov module account.
 	authority string
+
+	// txHash is a function to calculate the transaction hash from the raw transaction bytes.
+	// This is used to provide the transaction hash to the wasmvm engine and currently defaults to
+	// sha256 hashing, which is the hash currently used in CometBFT:
+	// https://github.com/cometbft/cometbft/blob/v1.0.1/crypto/tmhash/hash.go#L19-L22
+	txHash func([]byte) []byte
 
 	// wasmLimits contains the limits sent to wasmvm on init
 	wasmLimits wasmvmtypes.WasmLimits
@@ -338,7 +342,7 @@ func (k Keeper) instantiate(
 	}
 
 	// prepare params for contract instantiate call
-	env := types.NewEnv(sdkCtx, contractAddress)
+	env := types.NewEnv(sdkCtx, k.txHash, contractAddress)
 	info := types.NewInfo(creator, deposit)
 
 	// create prefixed data store
@@ -375,12 +379,11 @@ func (k Keeper) instantiate(
 	}
 	if report.HasIBCEntryPoints {
 		// register IBC port
-		ibcPort, err := k.ensureIbcPort(sdkCtx, contractAddress)
-		if err != nil {
-			return nil, nil, err
-		}
+		ibcPort := PortIDForContract(contractAddress)
 		contractInfo.IBCPortID = ibcPort
 	}
+
+	contractInfo.IBC2PortID = PortIDForContractV2(contractAddress)
 
 	// store contract before dispatch so that contract could be called back
 	historyEntry := contractInfo.InitialHistory(initMsg)
@@ -435,7 +438,7 @@ func (k Keeper) execute(ctx context.Context, contractAddress, caller sdk.AccAddr
 		}
 	}
 
-	env := types.NewEnv(sdkCtx, contractAddress)
+	env := types.NewEnv(sdkCtx, k.txHash, contractAddress)
 	info := types.NewInfo(caller, coins)
 
 	// prepare querier
@@ -511,12 +514,12 @@ func (k Keeper) migrate(
 		return nil, errorsmod.Wrap(types.ErrMigrationFailed, "requires ibc callbacks")
 	case report.HasIBCEntryPoints && contractInfo.IBCPortID == "":
 		// add ibc port
-		ibcPort, err := k.ensureIbcPort(sdkCtx, contractAddress)
-		if err != nil {
-			return nil, err
-		}
+		ibcPort := PortIDForContract(contractAddress)
 		contractInfo.IBCPortID = ibcPort
 	}
+
+	ibc2Port := PortIDForContractV2(contractAddress)
+	contractInfo.IBC2PortID = ibc2Port
 
 	var response *wasmvmtypes.Response
 
@@ -553,6 +556,8 @@ func (k Keeper) migrate(
 		return nil, err
 	}
 	k.mustStoreContractInfo(ctx, contractAddress, contractInfo)
+
+	contractInfo.IBC2PortID = PortIDForContractV2(contractAddress)
 
 	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeMigrate,
@@ -596,7 +601,7 @@ func (k Keeper) callMigrateEntrypoint(
 	setupCost := k.gasRegister.SetupContractCost(discount, len(msg))
 	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: migrate")
 
-	env := types.NewEnv(sdkCtx, contractAddress)
+	env := types.NewEnv(sdkCtx, k.txHash, contractAddress)
 
 	// prepare querier
 	querier := k.newQueryHandler(sdkCtx, contractAddress)
@@ -646,7 +651,7 @@ func (k Keeper) Sudo(ctx context.Context, contractAddress sdk.AccAddress, msg []
 
 	sdkCtx.GasMeter().ConsumeGas(setupCost, "Loading CosmWasm module: sudo")
 
-	env := types.NewEnv(sdkCtx, contractAddress)
+	env := types.NewEnv(sdkCtx, k.txHash, contractAddress)
 
 	// prepare querier
 	querier := k.newQueryHandler(sdkCtx, contractAddress)
@@ -688,7 +693,7 @@ func (k Keeper) reply(ctx sdk.Context, contractAddress sdk.AccAddress, reply was
 	replyCosts := k.gasRegister.ReplyCosts(true, reply)
 	ctx.GasMeter().ConsumeGas(replyCosts, "Loading CosmWasm module: reply")
 
-	env := types.NewEnv(ctx, contractAddress)
+	env := types.NewEnv(ctx, k.txHash, contractAddress)
 
 	// prepare querier
 	querier := k.newQueryHandler(ctx, contractAddress)
@@ -885,7 +890,7 @@ func (k Keeper) QuerySmart(ctx context.Context, contractAddr sdk.AccAddress, req
 	// prepare querier
 	querier := k.newQueryHandler(sdkCtx, contractAddr)
 
-	env := types.NewEnv(sdkCtx, contractAddr)
+	env := types.NewEnv(sdkCtx, k.txHash, contractAddr)
 	queryResult, gasUsed, qErr := k.wasmVM.Query(codeInfo.CodeHash, env, req, prefixStore, cosmwasmAPI, querier, k.gasMeter(sdkCtx), k.runtimeGasForContract(sdkCtx), costJSONDeserialization)
 	k.consumeRuntimeGas(sdkCtx, gasUsed)
 	if qErr != nil {
@@ -942,6 +947,45 @@ func (k Keeper) QueryRaw(ctx context.Context, contractAddress sdk.AccAddress, ke
 	prefixStoreKey := types.GetContractStorePrefix(contractAddress)
 	prefixStore := prefix.NewStore(runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx)), prefixStoreKey)
 	return prefixStore.Get(key)
+}
+
+func (k Keeper) QueryRawRange(ctx context.Context, contractAddress sdk.AccAddress, start, end []byte, limit uint16, reverse bool) (results []wasmvmtypes.RawRangeEntry, nextKey []byte) {
+	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "query-raw-range")
+
+	prefixStoreKey := types.GetContractStorePrefix(contractAddress)
+	prefixStore := prefix.NewStore(runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx)), prefixStoreKey)
+	var iter storetypes.Iterator
+	if reverse {
+		iter = prefixStore.ReverseIterator(start, end)
+	} else {
+		iter = prefixStore.Iterator(start, end)
+	}
+	defer iter.Close()
+
+	// Make sure to set to empty array because the contract doesn't expect a null JSON value
+	results = []wasmvmtypes.RawRangeEntry{}
+
+	var count uint16 = 0
+	for ; iter.Valid(); iter.Next() {
+		// keep track of count to honor the limit
+		if count == limit {
+			break
+		}
+		count++
+
+		// add key-value pair
+		results = append(results, wasmvmtypes.RawRangeEntry{Key: iter.Key(), Value: iter.Value()})
+	}
+
+	if iter.Valid() {
+		// if there are more results, set the next key
+		key := iter.Key()
+		nextKey = key
+	} else {
+		nextKey = nil
+	}
+
+	return results, nextKey
 }
 
 // internal helper function
@@ -1091,6 +1135,7 @@ func (k Keeper) importContractState(ctx context.Context, contractAddress sdk.Acc
 		}
 		prefixStore.Set(model.Key, model.Value)
 	}
+
 	return nil
 }
 
@@ -1210,7 +1255,6 @@ func (k Keeper) checkDiscountEligibility(ctx sdk.Context, checksum []byte, isPin
 
 	txContracts, ok := types.TxContractsFromContext(ctx)
 	if !ok || txContracts.GetContracts() == nil {
-		k.Logger(ctx).Warn("cannot get tx contracts from context")
 		return ctx, false
 	} else if txContracts.Exists(checksum) {
 		return ctx, true
