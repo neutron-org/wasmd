@@ -10,7 +10,7 @@ import (
 // DefaultMaxQueryStackSize maximum size of the stack of recursive queries a contract can make
 const DefaultMaxQueryStackSize uint32 = 10
 
-const DefaultMaxCallDepth uint32 = 500
+const DefaultMaxCallDepth uint32 = 100
 
 // WasmEngine defines the WASM contract runtime engine.
 type WasmEngine interface {
@@ -119,7 +119,7 @@ type WasmEngine interface {
 	//
 	// MigrateMsg has some data on how to perform the migration.
 	//
-	// MigrateWithInfo takes one more argument - `migateInfo`. It consist of an additional data
+	// MigrateWithInfo takes one more argument - `migrateInfo`. It consist of an additional data
 	// related to the on-chain current contract's state version.
 	MigrateWithInfo(
 		checksum wasmvm.Checksum,
