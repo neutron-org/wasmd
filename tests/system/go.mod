@@ -1,6 +1,6 @@
 module github.com/CosmWasm/wasmd/tests/system
 
-go 1.23.6
+go 1.24
 
 require (
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5 // indirect
@@ -25,7 +25,7 @@ require (
 
 require (
 	cosmossdk.io/math v1.5.3
-	github.com/cometbft/cometbft v0.38.17
+	github.com/cometbft/cometbft v0.38.19
 	github.com/gogo/protobuf v1.3.2
 	github.com/tidwall/gjson v1.14.2
 	github.com/tidwall/sjson v1.2.5

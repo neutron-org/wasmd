@@ -60,7 +60,7 @@ func (m *MockChannelKeeper) GetAllChannelsWithPortPrefix(ctx sdk.Context, portPr
 }
 
 func (m *MockChannelKeeper) SetChannel(ctx sdk.Context, portID, channelID string, channel channeltypes.Channel) {
-	if m.GetChannelFn == nil {
+	if m.SetChannelFn == nil {
 		panic("not supposed to be called!")
 	}
 	m.SetChannelFn(ctx, portID, channelID, channel)
@@ -153,6 +153,9 @@ func (m *IBCContractKeeperMock) StoreAsyncAckPacket(ctx context.Context, packet 
 }
 
 func (m *IBCContractKeeperMock) DeleteAsyncAckPacket(ctx context.Context, portID, channelID string, sequence uint64) {
+	if m.packets == nil {
+		return
+	}
 	key := portID + fmt.Sprint(len(channelID)) + channelID
 	delete(m.packets, key)
 }

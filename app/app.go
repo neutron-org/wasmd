@@ -281,8 +281,8 @@ func NewWasmApp(
 	// Example:
 	//
 	// prepareOpt = func(app *baseapp.BaseApp) {
-	// 	abciPropHandler := baseapp.NewDefaultProposalHandler(nonceMempool, app)
-	// 	app.SetPrepareProposal(abciPropHandler.PrepareProposalHandler())
+	// abciPropHandler := baseapp.NewDefaultProposalHandler(nonceMempool, app)
+	// app.SetPrepareProposal(abciPropHandler.PrepareProposalHandler())
 	// }
 	// baseAppOptions = append(baseAppOptions, prepareOpt)
 
@@ -369,8 +369,8 @@ func NewWasmApp(
 	// optional: enable sign mode textual by overwriting the default tx config (after setting the bank keeper)
 	// enabledSignModes := append(tx.DefaultSignModes, sigtypes.SignMode_SIGN_MODE_TEXTUAL)
 	// txConfigOpts := tx.ConfigOptions{
-	//	 EnabledSignModes:           enabledSignModes,
-	//	 TextualCoinMetadataQueryFn: txmodule.NewBankKeeperCoinMetadataQueryFn(app.BankKeeper),
+	// EnabledSignModes:           enabledSignModes,
+	// TextualCoinMetadataQueryFn: txmodule.NewBankKeeperCoinMetadataQueryFn(app.BankKeeper),
 	// }
 	// txConfig, err := tx.NewTxConfigWithOptions(
 	// 	 appCodec,
@@ -905,17 +905,7 @@ func NewWasmApp(
 	// upgrade.
 	app.setPostHandler()
 
-	if loadLatest {
-		if err := app.LoadLatestVersion(); err != nil {
-			panic(fmt.Errorf("error loading last version: %w", err))
-		}
-		ctx := app.NewUncachedContext(true, tmproto.Header{})
-
-		// Initialize pinned codes in wasmvm as they are not persisted there
-		if err := app.WasmKeeper.InitializePinnedCodes(ctx); err != nil {
-			panic(fmt.Sprintf("failed initialize pinned codes %s", err))
-		}
-	}
+	app.setPinnedCodes(loadLatest)
 
 	return app
 }
@@ -954,6 +944,20 @@ func (app *WasmApp) setPostHandler() {
 	}
 
 	app.SetPostHandler(postHandler)
+}
+
+func (app *WasmApp) setPinnedCodes(loadLatest bool) {
+	if loadLatest {
+		if err := app.LoadLatestVersion(); err != nil {
+			panic(fmt.Errorf("error loading last version: %w", err))
+		}
+		ctx := app.NewUncachedContext(true, tmproto.Header{})
+
+		// Initialize pinned codes in wasmvm as they are not persisted there
+		if err := app.WasmKeeper.InitializePinnedCodes(ctx); err != nil {
+			panic(fmt.Sprintf("failed initialize pinned codes %s", err))
+		}
+	}
 }
 
 // Name returns the name of the App
