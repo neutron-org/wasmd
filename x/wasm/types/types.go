@@ -4,8 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"slices"
 
-	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/v3/types"
 	"github.com/cosmos/gogoproto/proto"
 
 	errorsmod "cosmossdk.io/errors"
@@ -20,11 +21,12 @@ const (
 	defaultSmartQueryGasLimit uint64 = 3_000_000
 	defaultContractDebugMode         = false
 
-	// ContractAddrLen defines a valid address length for contracts
-	ContractAddrLen = 32
 	// SDKAddrLen defines a valid address length that was used in sdk address generation
 	SDKAddrLen = 20
 )
+
+// ContractAddrLen defines a valid address length for contracts
+var ContractAddrLen = 32
 
 func (m Model) ValidateBasic() error {
 	if len(m.Key) == 0 {
@@ -250,11 +252,8 @@ func (a *AbsoluteTxPosition) Bytes() []byte {
 // ValidateBasic syntax checks
 func (c ContractCodeHistoryEntry) ValidateBasic() error {
 	var found bool
-	for _, v := range AllCodeHistoryTypes {
-		if c.Operation == v {
-			found = true
-			break
-		}
+	if slices.Contains(AllCodeHistoryTypes, c.Operation) {
+		found = true
 	}
 	if !found {
 		return ErrInvalid.Wrap("operation")
@@ -269,7 +268,7 @@ func (c ContractCodeHistoryEntry) ValidateBasic() error {
 }
 
 // NewEnv initializes the environment for a contract instance
-func NewEnv(ctx sdk.Context, contractAddr sdk.AccAddress) wasmvmtypes.Env {
+func NewEnv(ctx sdk.Context, txHash func([]byte) []byte, contractAddr sdk.AccAddress) wasmvmtypes.Env {
 	// safety checks before casting below
 	if ctx.BlockHeight() < 0 {
 		panic("Block height must never be negative")
@@ -290,7 +289,7 @@ func NewEnv(ctx sdk.Context, contractAddr sdk.AccAddress) wasmvmtypes.Env {
 		},
 	}
 	if txCounter, ok := TXCounter(ctx); ok {
-		env.Transaction = &wasmvmtypes.TransactionInfo{Index: txCounter}
+		env.Transaction = &wasmvmtypes.TransactionInfo{Index: txCounter, Hash: txHash(ctx.TxBytes())}
 	}
 	return env
 }
@@ -417,13 +416,10 @@ func isSubset(super, sub []string) bool {
 	if len(sub) == 0 {
 		return true
 	}
-	var matches int
+	matches := 0
 	for _, o := range sub {
-		for _, s := range super {
-			if o == s {
-				matches++
-				break
-			}
+		if slices.Contains(super, o) {
+			matches++
 		}
 	}
 	return matches == len(sub)

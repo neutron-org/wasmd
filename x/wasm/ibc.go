@@ -3,13 +3,12 @@ package wasm
 import (
 	"math"
 
-	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
-	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
-	clienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types"
-	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
-	porttypes "github.com/cosmos/ibc-go/v8/modules/core/05-port/types"
-	host "github.com/cosmos/ibc-go/v8/modules/core/24-host"
-	ibcexported "github.com/cosmos/ibc-go/v8/modules/core/exported"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/v3/types"
+	transfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
+	clienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types"
+	channeltypes "github.com/cosmos/ibc-go/v10/modules/core/04-channel/types"
+	porttypes "github.com/cosmos/ibc-go/v10/modules/core/05-port/types"
+	ibcexported "github.com/cosmos/ibc-go/v10/modules/core/exported"
 
 	errorsmod "cosmossdk.io/errors"
 
@@ -36,11 +35,12 @@ type appVersionGetter interface {
 type IBCHandler struct {
 	keeper           types.IBCContractKeeper
 	channelKeeper    types.ChannelKeeper
+	transferKeeper   types.ICS20TransferPortSource
 	appVersionGetter appVersionGetter
 }
 
-func NewIBCHandler(k types.IBCContractKeeper, ck types.ChannelKeeper, vg appVersionGetter) IBCHandler {
-	return IBCHandler{keeper: k, channelKeeper: ck, appVersionGetter: vg}
+func NewIBCHandler(k types.IBCContractKeeper, ck types.ChannelKeeper, tk types.ICS20TransferPortSource, vg appVersionGetter) IBCHandler {
+	return IBCHandler{keeper: k, channelKeeper: ck, transferKeeper: tk, appVersionGetter: vg}
 }
 
 // OnChanOpenInit implements the IBCModule interface
@@ -50,7 +50,6 @@ func (i IBCHandler) OnChanOpenInit(
 	connectionHops []string,
 	portID string,
 	channelID string,
-	chanCap *capabilitytypes.Capability,
 	counterParty channeltypes.Counterparty,
 	version string,
 ) (string, error) {
@@ -88,10 +87,6 @@ func (i IBCHandler) OnChanOpenInit(
 		acceptedVersion = version
 	}
 
-	// Claim channel capability passed back by IBC module
-	if err := i.keeper.ClaimCapability(ctx, chanCap, host.ChannelCapabilityPath(portID, channelID)); err != nil {
-		return "", errorsmod.Wrap(err, "claim capability")
-	}
 	return acceptedVersion, nil
 }
 
@@ -101,7 +96,6 @@ func (i IBCHandler) OnChanOpenTry(
 	order channeltypes.Order,
 	connectionHops []string,
 	portID, channelID string,
-	chanCap *capabilitytypes.Capability,
 	counterParty channeltypes.Counterparty,
 	counterpartyVersion string,
 ) (string, error) {
@@ -135,17 +129,6 @@ func (i IBCHandler) OnChanOpenTry(
 	}
 	if version == "" {
 		version = counterpartyVersion
-	}
-
-	// Module may have already claimed capability in OnChanOpenInit in the case of crossing hellos
-	// (ie chainA and chainB both call ChanOpenInit before one of them calls ChanOpenTry)
-	// If module can already authenticate the capability then module already owns it, so we don't need to claim
-	// Otherwise, module does not have channel capability, and we must claim it from IBC
-	if !i.keeper.AuthenticateCapability(ctx, chanCap, host.ChannelCapabilityPath(portID, channelID)) {
-		// Only claim channel capability passed back by IBC module if we do not already own it
-		if err := i.keeper.ClaimCapability(ctx, chanCap, host.ChannelCapabilityPath(portID, channelID)); err != nil {
-			return "", errorsmod.Wrap(err, "claim capability")
-		}
 	}
 
 	return version, nil
@@ -272,6 +255,7 @@ func toWasmVMChannel(portID, channelID string, channelInfo channeltypes.Channel,
 // OnRecvPacket implements the IBCModule interface
 func (i IBCHandler) OnRecvPacket(
 	ctx sdk.Context,
+	channelVersion string,
 	packet channeltypes.Packet,
 	relayer sdk.AccAddress,
 ) ibcexported.Acknowledgement {
@@ -299,6 +283,7 @@ func (i IBCHandler) OnRecvPacket(
 // OnAcknowledgementPacket implements the IBCModule interface
 func (i IBCHandler) OnAcknowledgementPacket(
 	ctx sdk.Context,
+	channelVersion string,
 	packet channeltypes.Packet,
 	acknowledgement []byte,
 	relayer sdk.AccAddress,
@@ -320,7 +305,7 @@ func (i IBCHandler) OnAcknowledgementPacket(
 }
 
 // OnTimeoutPacket implements the IBCModule interface
-func (i IBCHandler) OnTimeoutPacket(ctx sdk.Context, packet channeltypes.Packet, relayer sdk.AccAddress) error {
+func (i IBCHandler) OnTimeoutPacket(ctx sdk.Context, channelVersion string, packet channeltypes.Packet, relayer sdk.AccAddress) error {
 	contractAddr, err := keeper.ContractFromPortID(packet.SourcePort)
 	if err != nil {
 		return errorsmod.Wrapf(err, "contract port id")
@@ -344,6 +329,7 @@ func (i IBCHandler) IBCSendPacketCallback(
 	packetData []byte,
 	contractAddress,
 	packetSenderAddress string,
+	version string,
 ) error {
 	_, err := validateSender(contractAddress, packetSenderAddress)
 	if err != nil {
@@ -363,6 +349,7 @@ func (i IBCHandler) IBCOnAcknowledgementPacketCallback(
 	relayer sdk.AccAddress,
 	contractAddress,
 	packetSenderAddress string,
+	version string,
 ) error {
 	contractAddr, err := validateSender(contractAddress, packetSenderAddress)
 	if err != nil {
@@ -392,6 +379,7 @@ func (i IBCHandler) IBCOnTimeoutPacketCallback(
 	relayer sdk.AccAddress,
 	contractAddress,
 	packetSenderAddress string,
+	version string,
 ) error {
 	contractAddr, err := validateSender(contractAddress, packetSenderAddress)
 	if err != nil {
@@ -418,6 +406,7 @@ func (i IBCHandler) IBCReceivePacketCallback(
 	packet ibcexported.PacketI,
 	ack ibcexported.Acknowledgement,
 	contractAddress string,
+	version string,
 ) error {
 	// sender validation makes no sense here, as the receiver is never the sender
 	contractAddr, err := sdk.AccAddressFromBech32(contractAddress)
@@ -425,9 +414,55 @@ func (i IBCHandler) IBCReceivePacketCallback(
 		return err
 	}
 
+	var transfer *wasmvmtypes.IBCTransferCallback
+
+	// detect successful IBC transfer, meaning:
+	// 1. it was sent to the transfer module
+	// 2. the acknowledgement was successful
+	if packet.GetDestPort() == i.transferKeeper.GetPort(cachedCtx) && ack.Success() {
+
+		transferData, err := transfertypes.UnmarshalPacketData(packet.GetData(), version, "")
+		if err != nil {
+			return errorsmod.Wrap(err, "unmarshal transfer packet data")
+		}
+
+		// just making sure we have a valid address
+		receiverAddr, err := sdk.AccAddressFromBech32(transferData.Receiver)
+		if err != nil {
+			return err
+		}
+
+		// For a more in-depth explanation of the logic here, see the transfer module implementation:
+		// https://github.com/cosmos/ibc-go/blob/a6217ab02a4d57c52a938eeaff8aeb383e523d12/modules/apps/transfer/keeper/relay.go#L147-L175
+		// and the sequence diagram in the ICS20 spec:
+		// https://github.com/cosmos/ibc/blob/9be3630/spec/app/ics-020-fungible-token-transfer/README.md#data-structures
+		if transferData.Token.Denom.HasPrefix(packet.GetSourcePort(), packet.GetSourceChannel()) {
+			// This is a denom coming from this chain, being sent back again, so we remove the prefix.
+			// See for example the "A -> C" step in the sequence diagram.
+			transferData.Token.Denom.Trace = transferData.Token.Denom.Trace[1:]
+		} else {
+			// prefixing happens on the receiving end, so we need to do that here
+			// See for example the "C -> A" step in the sequence diagram.
+			trace := []transfertypes.Hop{transfertypes.NewHop(packet.GetDestPort(), packet.GetDestChannel())}
+			transferData.Token.Denom.Trace = append(trace, transferData.Token.Denom.Trace...)
+		}
+
+		transfer = &wasmvmtypes.IBCTransferCallback{
+			Receiver: receiverAddr.String(),
+			Sender:   transferData.Sender,
+			Funds: wasmvmtypes.Array[wasmvmtypes.Coin]{
+				{
+					Denom:  transferData.Token.GetDenom().IBCDenom(),
+					Amount: transferData.Token.GetAmount(),
+				},
+			},
+		}
+	}
+
 	msg := wasmvmtypes.IBCDestinationCallbackMsg{
-		Ack:    wasmvmtypes.IBCAcknowledgement{Data: ack.Acknowledgement()},
-		Packet: newIBCPacket(packet),
+		Ack:      wasmvmtypes.IBCAcknowledgement{Data: ack.Acknowledgement()},
+		Packet:   newIBCPacket(packet),
+		Transfer: transfer,
 	}
 
 	err = i.keeper.IBCDestinationCallback(cachedCtx, contractAddr, msg)

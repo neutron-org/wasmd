@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	wasmvmtypes "github.com/CosmWasm/wasmvm/v2/types"
+	wasmvmtypes "github.com/CosmWasm/wasmvm/v3/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/gogoproto/proto"
-	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	channeltypes "github.com/cosmos/ibc-go/v10/modules/core/04-channel/types"
 
 	errorsmod "cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
@@ -53,7 +53,7 @@ var _ wasmvmtypes.Querier = QueryHandler{}
 func (q QueryHandler) Query(request wasmvmtypes.QueryRequest, gasLimit uint64) ([]byte, error) {
 	// set a limit for a subCtx
 	sdkGas := q.gasRegister.FromWasmVMGas(gasLimit)
-	// discard all changes/ events in subCtx by not committing the cached context
+	// discard all changes/events in subCtx by not committing the cached context
 	subCtx, _ := q.Ctx.WithGasMeter(storetypes.NewGasMeter(sdkGas)).CacheContext()
 
 	// make sure we charge the higher level context even on panic
@@ -84,13 +84,18 @@ func (q QueryHandler) GasConsumed() uint64 {
 
 type CustomQuerier func(ctx sdk.Context, request json.RawMessage) ([]byte, error)
 
+type (
+	stargateQuerierFn func(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error)
+	grpcQuerierFn     func(ctx sdk.Context, request *wasmvmtypes.GrpcQuery) (proto.Message, error)
+)
+
 type QueryPlugins struct {
 	Bank         func(ctx sdk.Context, request *wasmvmtypes.BankQuery) ([]byte, error)
 	Custom       CustomQuerier
 	IBC          func(ctx sdk.Context, caller sdk.AccAddress, request *wasmvmtypes.IBCQuery) ([]byte, error)
 	Staking      func(ctx sdk.Context, request *wasmvmtypes.StakingQuery) ([]byte, error)
-	Stargate     func(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error)
-	Grpc         func(ctx sdk.Context, request *wasmvmtypes.GrpcQuery) (proto.Message, error)
+	Stargate     stargateQuerierFn
+	Grpc         grpcQuerierFn
 	Wasm         func(ctx sdk.Context, request *wasmvmtypes.WasmQuery) ([]byte, error)
 	Distribution func(ctx sdk.Context, request *wasmvmtypes.DistributionQuery) ([]byte, error)
 }
@@ -103,6 +108,7 @@ type wasmQueryKeeper interface {
 	contractMetaDataSource
 	GetCodeInfo(ctx context.Context, codeID uint64) *types.CodeInfo
 	QueryRaw(ctx context.Context, contractAddress sdk.AccAddress, key []byte) []byte
+	QueryRawRange(ctx context.Context, contractAddress sdk.AccAddress, start, end []byte, limit uint16, reverse bool) (results []wasmvmtypes.RawRangeEntry, nextKey []byte)
 	QuerySmart(ctx context.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error)
 	IsPinnedCode(ctx context.Context, codeID uint64) bool
 }
@@ -121,7 +127,7 @@ func DefaultQueryPlugins(
 		Custom:       NoCustomQuerier,
 		IBC:          IBCQuerier(wasm, channelKeeper),
 		Staking:      StakingQuerier(staking, distKeeper),
-		Stargate:     RejectStargateQuerier(),
+		Stargate:     RejectStargateQuerier,
 		Grpc:         RejectGrpcQuerier,
 		Wasm:         WasmQuerier(wasm),
 		Distribution: DistributionQuerier(distKeeper),
@@ -332,9 +338,14 @@ func IBCQuerier(wasm contractMetaDataSource, channelKeeper types.ChannelKeeper) 
 	}
 }
 
+// RejectGrpcQuerier is a querier that rejects all gRPC queries.
+//
+// Use AcceptListGrpcQuerier instead to create a list of accepted query types.
 func RejectGrpcQuerier(ctx sdk.Context, request *wasmvmtypes.GrpcQuery) (proto.Message, error) {
-	return nil, wasmvmtypes.UnsupportedRequest{Kind: "gRPC queries are disabled"}
+	return nil, wasmvmtypes.UnsupportedRequest{Kind: "gRPC queries are disabled on this chain"}
 }
+
+var _ grpcQuerierFn = RejectGrpcQuerier // just a type check
 
 // AcceptListGrpcQuerier supports a preconfigured set of gRPC queries only.
 // All arguments must be non nil.
@@ -344,7 +355,7 @@ func RejectGrpcQuerier(ctx sdk.Context, request *wasmvmtypes.GrpcQuery) (proto.M
 //
 // These queries can be set via WithQueryPlugins option in the wasm keeper constructor:
 // WithQueryPlugins(&QueryPlugins{Grpc: AcceptListGrpcQuerier(acceptList, queryRouter, codec)})
-func AcceptListGrpcQuerier(acceptList AcceptedQueries, queryRouter GRPCQueryRouter, codec codec.Codec) func(ctx sdk.Context, request *wasmvmtypes.GrpcQuery) (proto.Message, error) {
+func AcceptListGrpcQuerier(acceptList AcceptedQueries, queryRouter GRPCQueryRouter, codec codec.Codec) grpcQuerierFn {
 	return func(ctx sdk.Context, request *wasmvmtypes.GrpcQuery) (proto.Message, error) {
 		protoResponseFn, accepted := acceptList[request.Path]
 		if !accepted {
@@ -375,12 +386,14 @@ func AcceptListGrpcQuerier(acceptList AcceptedQueries, queryRouter GRPCQueryRout
 	}
 }
 
-// RejectStargateQuerier rejects all stargate queries
-func RejectStargateQuerier() func(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error) {
-	return func(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error) {
-		return nil, wasmvmtypes.UnsupportedRequest{Kind: "Stargate queries are disabled"}
-	}
+// RejectStargateQuerier is a querier that rejects all stargate queries.
+//
+// Use AcceptListStargateQuerier instead to create a list of accepted query types.
+func RejectStargateQuerier(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error) {
+	return nil, wasmvmtypes.UnsupportedRequest{Kind: "Stargate queries are disabled on this chain"}
 }
+
+var _ stargateQuerierFn = RejectStargateQuerier // just a type check
 
 // AcceptedQueries defines accepted Stargate or gRPC queries as a map where the key is the query path
 // and the value is a function returning a proto.Message.
@@ -400,7 +413,7 @@ type AcceptedQueries map[string]func() proto.Message
 //
 // These queries can be set via WithQueryPlugins option in the wasm keeper constructor:
 // WithQueryPlugins(&QueryPlugins{Stargate: AcceptListStargateQuerier(acceptList, queryRouter, codec)})
-func AcceptListStargateQuerier(acceptList AcceptedQueries, queryRouter GRPCQueryRouter, codec codec.Codec) func(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error) {
+func AcceptListStargateQuerier(acceptList AcceptedQueries, queryRouter GRPCQueryRouter, codec codec.Codec) stargateQuerierFn {
 	return func(ctx sdk.Context, request *wasmvmtypes.StargateQuery) ([]byte, error) {
 		protoResponseFn, accepted := acceptList[request.Path]
 		if !accepted {
@@ -672,11 +685,12 @@ func WasmQuerier(k wasmQueryKeeper) func(ctx sdk.Context, request *wasmvmtypes.W
 					Wrapf("address %s", contractAddr)
 			}
 			res := wasmvmtypes.ContractInfoResponse{
-				CodeID:  info.CodeID,
-				Creator: info.Creator,
-				Admin:   info.Admin,
-				Pinned:  k.IsPinnedCode(ctx, info.CodeID),
-				IBCPort: info.IBCPortID,
+				CodeID:   info.CodeID,
+				Creator:  info.Creator,
+				Admin:    info.Admin,
+				Pinned:   k.IsPinnedCode(ctx, info.CodeID),
+				IBCPort:  info.IBCPortID,
+				IBC2Port: info.IBC2PortID,
 			}
 			return json.Marshal(res)
 		case request.CodeInfo != nil:
@@ -695,6 +709,29 @@ func WasmQuerier(k wasmQueryKeeper) func(ctx sdk.Context, request *wasmvmtypes.W
 				Checksum: info.CodeHash,
 			}
 			return json.Marshal(res)
+		case request.RawRange != nil:
+			contractAddr := request.RawRange.ContractAddr
+			addr, err := sdk.AccAddressFromBech32(contractAddr)
+			if err != nil {
+				return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, contractAddr)
+			}
+
+			var reverse bool
+			switch request.RawRange.Order {
+			case "ascending":
+				reverse = false
+			case "descending":
+				reverse = true
+			default:
+				return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "unknown order %s", request.RawRange.Order)
+			}
+			data, nextKey := k.QueryRawRange(ctx, addr, request.RawRange.Start, request.RawRange.End, request.RawRange.Limit, reverse)
+			res := wasmvmtypes.RawRangeResponse{
+				Data:    data,
+				NextKey: nextKey,
+			}
+			return json.Marshal(res)
+
 		}
 		return nil, wasmvmtypes.UnsupportedRequest{Kind: "unknown WasmQuery variant"}
 	}
@@ -829,6 +866,10 @@ func ConvertSdkDenomUnitsToWasmDenomUnits(denomUnits []*banktypes.DenomUnit) []w
 			Denom:    u.Denom,
 			Exponent: u.Exponent,
 			Aliases:  u.Aliases,
+		}
+		// Returning nil may break cosmwasm-std
+		if u.Aliases == nil {
+			converted[i].Aliases = []string{}
 		}
 	}
 	return converted

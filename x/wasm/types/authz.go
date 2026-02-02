@@ -5,7 +5,7 @@ import (
 	"context"
 	"strings"
 
-	wasmvm "github.com/CosmWasm/wasmvm/v2"
+	wasmvm "github.com/CosmWasm/wasmvm/v3"
 	"github.com/cosmos/gogoproto/proto"
 
 	errorsmod "cosmossdk.io/errors"
@@ -545,7 +545,7 @@ func (u UndefinedLimit) ValidateBasic() error {
 
 // Accept always returns error
 func (u UndefinedLimit) Accept(_ sdk.Context, _ AuthzableWasmMsg) (*ContractAuthzLimitAcceptResult, error) {
-	return nil, sdkerrors.ErrNotFound.Wrapf("undefined filter")
+	return nil, sdkerrors.ErrNotFound.Wrapf("undefined limit")
 }
 
 // NewMaxCallsLimit constructor

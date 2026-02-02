@@ -87,7 +87,7 @@ jobs:
           done
 
       - name: Upload coverage and logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-${{ matrix.shard }}
           path: |
@@ -101,7 +101,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
 
@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload test system artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-system-artifacts
           path: /tmp/test-system-artifacts
@@ -197,7 +197,7 @@ jobs:
           SHA=${{ github.sha }}
           IN_DOCKER=$(docker run --rm $IMAGE_NAME:$SHA /usr/bin/wasmd query wasm libwasmvm-version)
           echo "Runtime libwasmvm-version in docker: $IN_DOCKER"
-          IN_GOMOD=$(go list -m github.com/CosmWasm/wasmvm/v2 | cut -d" " -f2 | cut -d"v" -f2)
+          IN_GOMOD=$(go list -m github.com/CosmWasm/wasmvm/v3 | cut -d" " -f2 | cut -d"v" -f2)
           echo "wasmvm version in go.mod: $IN_GOMOD"
           if [[ "$IN_DOCKER" != "$IN_GOMOD" ]]; then
             echo "Mismatch of wasmvm versions detected"

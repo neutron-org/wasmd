@@ -249,7 +249,7 @@ func (s *SystemUnderTest) AwaitUpgradeInfo(t *testing.T) {
 			case err == nil:
 				found = true
 			case !os.IsNotExist(err):
-				t.Fatalf(err.Error())
+				t.Fatalf("upgrade error: %v", err)
 			}
 		})
 		time.Sleep(s.blockTime / 2)
@@ -382,7 +382,7 @@ func (s *SystemUnderTest) AwaitBlockHeight(t *testing.T, targetHeight int64, tim
 	if len(timeout) != 0 {
 		maxWaitTime = timeout[0]
 	} else {
-		maxWaitTime = time.Duration(targetHeight-s.currentHeight+3) * s.blockTime
+		maxWaitTime = time.Duration(targetHeight-s.currentHeight+10) * s.blockTime
 	}
 	abort := time.NewTimer(maxWaitTime).C
 	for {
@@ -402,7 +402,7 @@ func (s *SystemUnderTest) AwaitBlockHeight(t *testing.T, targetHeight int64, tim
 // Returns the new height
 func (s *SystemUnderTest) AwaitNextBlock(t *testing.T, timeout ...time.Duration) int64 {
 	t.Helper()
-	maxWaitTime := s.blockTime * 3
+	maxWaitTime := s.blockTime * 5
 	if len(timeout) != 0 { // optional argument to overwrite default timeout
 		maxWaitTime = timeout[0]
 	}
@@ -758,7 +758,7 @@ type (
 )
 
 // Subscribe to receive events for a topic. Does not block.
-// For query syntax See https://docs.cosmos.network/master/core/events.html#subscribing-to-events
+// For query syntax See https://docs.cosmos.network/main/learn/advanced/events#subscribing-to-events
 func (l *EventListener) Subscribe(query string, cb EventConsumer) func() {
 	ctx, done := context.WithCancel(context.Background())
 	l.t.Cleanup(done)
@@ -780,7 +780,7 @@ func (l *EventListener) Subscribe(query string, cb EventConsumer) func() {
 }
 
 // AwaitQuery blocks and waits for a single result or timeout. This can be used with `broadcast-mode=async`.
-// For query syntax See https://docs.cosmos.network/master/core/events.html#subscribing-to-events
+// For query syntax See https://docs.cosmos.network/main/learn/advanced/events#subscribing-to-events
 func (l *EventListener) AwaitQuery(query string, optMaxWaitTime ...time.Duration) *ctypes.ResultEvent {
 	c, result := CaptureSingleEventConsumer()
 	maxWaitTime := DefaultWaitTime

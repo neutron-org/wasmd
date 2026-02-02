@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	wasmvm "github.com/CosmWasm/wasmvm/v2"
+	wasmvm "github.com/CosmWasm/wasmvm/v3"
 	"github.com/distribution/reference"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -114,19 +114,19 @@ func parseVerificationFlags(gzippedWasm []byte, flags *flag.FlagSet) (string, st
 	// if any set require others to be set
 	if len(source) != 0 || len(builder) != 0 || len(codeHash) != 0 {
 		if source == "" {
-			return "", "", nil, fmt.Errorf("source is required")
+			return "", "", nil, errors.New("source is required")
 		}
 		if _, err = url.ParseRequestURI(source); err != nil {
 			return "", "", nil, fmt.Errorf("source: %s", err)
 		}
 		if builder == "" {
-			return "", "", nil, fmt.Errorf("builder is required")
+			return "", "", nil, errors.New("builder is required")
 		}
 		if _, err := reference.ParseDockerRef(builder); err != nil {
 			return "", "", nil, fmt.Errorf("builder: %s", err)
 		}
 		if len(codeHash) == 0 {
-			return "", "", nil, fmt.Errorf("code hash is required")
+			return "", "", nil, errors.New("code hash is required")
 		}
 		// wasm is gzipped in parseStoreCodeArgs
 		// checksum generation will be decoupled here
@@ -319,10 +319,10 @@ func ProposalStoreAndInstantiateContractCmd() *cobra.Command {
 
 			// ensure sensible admin is set (or explicitly immutable)
 			if adminStr == "" && !noAdmin {
-				return fmt.Errorf("you must set an admin or explicitly pass --no-admin to make it immutable (wasmd issue #719)")
+				return errors.New("you must set an admin or explicitly pass --no-admin to make it immutable (wasmd issue #719)")
 			}
 			if adminStr != "" && noAdmin {
-				return fmt.Errorf("you set an admin and passed --no-admin, those cannot both be true")
+				return errors.New("you set an admin and passed --no-admin, those cannot both be true")
 			}
 
 			if adminStr != "" {
@@ -517,7 +517,7 @@ func ProposalSudoContractCmd() *cobra.Command {
 		},
 		SilenceUsage: true,
 	}
-	// proposal flagsExecute
+	// proposal flags
 	addCommonProposalFlags(cmd)
 	return cmd
 }
@@ -665,7 +665,7 @@ func parsePinCodesArgs(args []string) ([]uint64, error) {
 func ProposalUnpinCodesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "unpin-codes [code-ids] --title [text] --summary [text] --authority [address]",
-		Short: "Submit a unpin code proposal for unpinning a code to cache",
+		Short: "Submit an unpin code proposal for unpinning a code to cache",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, proposalTitle, summary, deposit, expedite, err := getProposalInfo(cmd)
@@ -768,7 +768,7 @@ func ProposalUpdateInstantiateConfigCmd() *cobra.Command {
 		Short: "Submit an update instantiate config proposal.",
 		Args:  cobra.MinimumNArgs(1),
 		Long: strings.TrimSpace(
-			fmt.Sprintf(`Submit an update instantiate config  proposal for multiple code ids.
+			fmt.Sprintf(`Submit an update instantiate config proposal for multiple code ids.
 
 Example:
 $ %s tx gov submit-proposal update-instantiate-config 1:nobody 2:everybody 3:%s1l2rsakp388kuv9k8qzq6lrm9taddae7fpx59wm,%s1vx8knpllrj7n963p9ttd80w47kpacrhuts497x

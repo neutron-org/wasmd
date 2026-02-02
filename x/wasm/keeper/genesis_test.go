@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	wasmvm "github.com/CosmWasm/wasmvm/v2"
+	wasmvm "github.com/CosmWasm/wasmvm/v3"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -36,7 +36,6 @@ import (
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 
 	"github.com/CosmWasm/wasmd/x/wasm/types"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 func TestGenesisExportImport(t *testing.T) {
@@ -761,9 +760,7 @@ func TestSupportedGenMsgTypes(t *testing.T) {
 
 func setupKeeper(t *testing.T) (*Keeper, sdk.Context) {
 	t.Helper()
-	tempDir, err := os.MkdirTemp("", "wasm")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(tempDir) })
+	tempDir := t.TempDir()
 
 	keyWasm := storetypes.NewKVStoreKey(types.StoreKey)
 
@@ -801,10 +798,9 @@ func setupKeeper(t *testing.T) (*Keeper, sdk.Context) {
 		nil,
 		nil,
 		nil,
-		nil,
 		tempDir,
 		nodeConfig,
-		wasmtypes.VMConfig{},
+		types.VMConfig{},
 		AvailableCapabilities,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)

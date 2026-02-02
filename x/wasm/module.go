@@ -3,11 +3,12 @@ package wasm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
 
-	wasmvm "github.com/CosmWasm/wasmvm/v2"
+	wasmvm "github.com/CosmWasm/wasmvm/v3"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/spf13/cast"
@@ -173,7 +174,7 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 }
 
 // RegisterInvariants registers the wasm module invariants.
-func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {}
+func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {} // nolint: staticcheck // deprecated interface
 
 // QuerierRoute returns the wasm module's querier route name.
 func (AppModule) QuerierRoute() string {
@@ -284,7 +285,7 @@ func getExpectedLibwasmVersion() string {
 		panic("can't read build info")
 	}
 	for _, d := range buildInfo.Deps {
-		if d.Path != "github.com/CosmWasm/wasmvm/v2" {
+		if d.Path != "github.com/CosmWasm/wasmvm/v3" {
 			continue
 		}
 		if d.Replace != nil {
@@ -308,7 +309,7 @@ func getExpectedLibwasmVersion() string {
 // `wasmd query wasm libwasmvm-version`.
 func CheckLibwasmVersion(wasmExpectedVersion string) error {
 	if wasmExpectedVersion == "" {
-		return fmt.Errorf("wasmvm module not exist")
+		return errors.New("wasmvm module not exist")
 	}
 	wasmVersion, err := wasmvm.LibwasmvmVersion()
 	if err != nil {
