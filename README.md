@@ -14,7 +14,7 @@ This code was forked from the `cosmos/gaia` repository as a basis and then we ad
 many gaia-specific files. However, the `wasmd` binary should function just like `gaiad` except for the
 addition of the `x/wasm` module.
 
-**Note**: Requires [Go 1.21+](https://golang.org/dl/)
+**Note**: Requires [Go 1.24+](https://golang.org/dl/)
 
 For critical security issues & disclosure, see [SECURITY.md](SECURITY.md).
 
@@ -73,7 +73,7 @@ Dependency resolution in Go is not obvious. In case of doubt, please use
 `go list -m github.com/CosmWasm/wasmvm` to get the dynamically calculated version of the wasmvm dependency. Also check
 
 ```sh
-# Replace <node> with you binary name
+# Replace <node> with your binary name
 <node> query wasm libwasmvm-version
 ```
 
@@ -87,16 +87,16 @@ For linux, the default is to build for glibc, and we cross-compile with CentOS 7
 backwards compatibility for `glibc 2.12+`. This includes all known supported distributions
 using glibc (CentOS 7 uses 2.12, obsolete Debian Jessie uses 2.19).
 
-As of `0.9.0` we support `muslc` Linux systems, in particular **Alpine linux**,
+As of `0.9.0` we support `musl` Linux systems, in particular **Alpine linux**,
 which is popular in docker distributions. Note that we do **not** store the
-static `muslc` build in the repo, so you must compile this yourself, and pass `-tags muslc`.
+static `musl` build in the repo, so you must compile this yourself, and pass `-tags musl`.
 Please look at the [`Dockerfile`](./Dockerfile) for an example of how we build a static Go
 binary for `muslc`. (Or just use this Dockerfile for your production setup).
 
 ## Stability
 
 **This is beta software** It is run in some production systems, but we cannot yet provide a stability guarantee
-and have not yet gone through and audit of this codebase. Note that the
+and have not yet gone through an audit of this codebase. Note that the
 [CosmWasm smart contract framework](https://github.com/CosmWasm/cosmwasm) used by `wasmd` is in a 1.0 release candidate
 as of March 2022, with stability guarantee and addressing audit results.
 
